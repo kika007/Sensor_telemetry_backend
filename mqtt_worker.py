@@ -10,7 +10,7 @@ TOPIC = "sensor/energy/brno"
 # MongoDB Configuration
 MONGO_URI = "mongodb://root:rootpassword@localhost:27017/"
 mongo_client = MongoClient(MONGO_URI)
-db = mongo_client["db"]  
+db = mongo_client["iot_energy_data"]  
 collection = db["energy_data"]
 
 def on_connect(client, userdata, flags, rc, properties=None):
