@@ -29,6 +29,7 @@ ENV/
 logs/
 mosquitto/log/
 mosquitto/data/
+mosquitto/config/certs/*
 
 # Test / coverage
 .pytest_cache/

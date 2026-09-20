@@ -2,11 +2,12 @@ import time
 import json
 import requests
 import paho.mqtt.client as mqtt
+import ssl
 
 
 # MQTT Configuration
 BROKER_HOST = "localhost"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 TOPIC = "sensor/energy/brno"
 API_URL = "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=wind_speed_10m,direct_radiation"
 
@@ -16,7 +17,7 @@ def fetch_energy_data():
         response = requests.get(API_URL)
         response.raise_for_status()
         data = response.json()
-        current_data = data.get("current", {}) # in case the current key is missing, we default to an empty dictionary
+        current_data = data.get("current", {})
         return {
             "location": "Brno",
             "solar_radiation_w_m2": current_data.get("direct_radiation", 0.0),
@@ -37,6 +38,8 @@ def on_connect(client, userdata, flags, rc, properties=None): #callback function
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)    
 client.on_connect = on_connect
+client.tls_set(ca_certs="./mosquitto/config/certs/ca.crt", tls_version=ssl.PROTOCOL_TLSv1_2)
+
 client.connect(BROKER_HOST, BROKER_PORT, 60)
 client.loop_start() #parallel thread to handle network traffic and callbacks
 print("Starting download data...")

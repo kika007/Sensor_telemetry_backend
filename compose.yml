@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # 1. PostgreSQL databáza
+  # 1. PostgreSQL database
   postgres:
     image: postgres:15
     container_name: iot_postgres
@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. MongoDB databáza (spĺňa podmienku verzie 6+)
+  # 2. MongoDB database (meets the version 6+ requirement)
   mongodb:
     image: mongo:6.0
     container_name: iot_mongo
@@ -31,13 +31,13 @@ services:
     image: eclipse-mosquitto:2
     container_name: iot_mosquitto
     ports:
-      - "1883:1883" # Štandardný port pre MQTT komunikáciu
+      - "8883:8883" 
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
 
-# Pomenované zväzky (volumes) zabezpečia, že sa nám dáta nevymažú pri reštarte
+# Named volumes ensure that data is preserved across restarts
 volumes:
   postgres_data:
   mongodb_data:

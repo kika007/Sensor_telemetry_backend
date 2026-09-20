@@ -1,9 +1,10 @@
 import json
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
+import ssl
 
 BROKER_HOST = "localhost"  
-Broker_PORT = 1883
+BROKER_PORT = 8883
 TOPIC = "sensor/energy/brno"
 
 # MongoDB Configuration
@@ -24,8 +25,6 @@ def on_connect(client, userdata, flags, rc, properties=None):
 
 def on_message(client, userdata, msg):
     
-    payload_str = msg.payload.decode('utf-8')
-    print(f"\nReceived message: {payload_str}")
     
     try:
         payload = json.loads(msg.payload.decode())
@@ -41,7 +40,9 @@ def on_message(client, userdata, msg):
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect(BROKER_HOST, Broker_PORT, 60)
+client.tls_set(ca_certs="./mosquitto/config/certs/ca.crt", tls_version=ssl.PROTOCOL_TLSv1_2)
+
+client.connect(BROKER_HOST, BROKER_PORT, 60)
 
 print("Starting MQTT worker...")
 try:
