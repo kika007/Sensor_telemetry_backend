@@ -4,6 +4,11 @@
     "port": 8883,
     "ca_cert": "./mosquitto/config/certs/ca.crt"
   },
+  "database_settings": {
+    "mongo_uri": "mongodb://root:rootpassword@localhost:27017/",
+    "db_name": "db",
+    "collection_name": "mqtt_data"
+  },
   "sensors": [
     {
       "name": "Brno-Sensor",
