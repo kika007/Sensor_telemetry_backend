@@ -72,17 +72,39 @@ class ModbusWeatherServer:
 
 # Main execution block
 if __name__ == "__main__":
-    # Temporarily hardcoded for testing, later we will load this from config.json
-    API_URL = "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=temperature_2m,relative_humidity_2m"
-    
-    server_app = ModbusWeatherServer(
-        host="localhost",
-        port=8020,
-        cert_file="./mosquitto/config/certs/server.crt",
-        key_file="./mosquitto/config/certs/server.key",
-        api_url=API_URL
+    import json
+    from pathlib import Path
+
+    # Define the path to our separate Modbus configuration file
+    current_dir = Path(__file__).parent
+    config_path = current_dir / "config.json"
+
+    # Try to load the JSON file securely
+    try:
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
+    except Exception as e:
+        print(f"Error loading Modbus configuration: {e}")
+        exit(1)
+
+    modbus_settings = config.get("modbus_settings", {})
+
+    # Extract the API URL, providing a safe fallback just in case
+    api_url = modbus_settings.get(
+        "api_url", 
+        "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=temperature_2m,relative_humidity_2m"
     )
     
+    # Initialize the server using values from the JSON file
+    server_app = ModbusWeatherServer(
+        host=modbus_settings.get("server_host", "localhost"),
+        port=modbus_settings.get("server_port", 8020),
+        cert_file=modbus_settings.get("server_cert", "./mosquitto/config/certs/server.crt"),
+        key_file=modbus_settings.get("server_key", "./mosquitto/config/certs/server.key"),
+        api_url=api_url
+    )
+    
+    # Start the async server
     try:
         asyncio.run(server_app.start())
     except KeyboardInterrupt:

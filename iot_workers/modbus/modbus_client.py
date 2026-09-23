@@ -138,13 +138,35 @@ class ModbusWeatherClient:
 
 
 if __name__ == "__main__":
-    # Temporarily hardcoded for testing, later we will load this from config.json
+    import json
+    from pathlib import Path
+
+    # Define the path to our new separate Modbus configuration file
+    current_dir = Path(__file__).parent
+    config_path = current_dir / "config.json"
+
+    # Try to load the JSON file securely
+    try:
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
+    except Exception as e:
+        print(f"Error loading Modbus configuration: {e}")
+        exit(1)
+
+    # Extract settings dictionaries with safe defaults
+    db_settings = config.get("database_settings", {})
+    modbus_settings = config.get("modbus_settings", {})
+
+    # Initialize the client using values from the JSON file
     client_app = ModbusWeatherClient(
-        host="localhost",
-        port=8020,
-        ca_cert="./mosquitto/config/certs/ca.crt",
-        mongo_uri="mongodb://root:rootpassword@localhost:27017/",
-        db_name="db",
-        collection_name="modbus_data"
+        host=modbus_settings.get("server_host", "localhost"),
+        port=modbus_settings.get("server_port", 8020),
+        ca_cert=modbus_settings.get("ca_cert", "./mosquitto/config/certs/ca.crt"),
+        mongo_uri=db_settings.get("mongo_uri", "mongodb://localhost:27017/"),
+        db_name=db_settings.get("db_name", "db"),
+        collection_name=db_settings.get("collection_name", "modbus_data"),
+        wait_time=modbus_settings.get("client_wait_time", 5)
     )
+    
+    # Start the application
     client_app.start()

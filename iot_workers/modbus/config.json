@@ -1,0 +1,16 @@
+{
+  "database_settings": {
+    "mongo_uri": "mongodb://root:rootpassword@localhost:27017/",
+    "db_name": "db",
+    "collection_name": "modbus_data"
+  },
+  "modbus_settings": {
+    "server_host": "localhost",
+    "server_port": 8020,
+    "client_wait_time": 5,
+    "ca_cert": "./mosquitto/config/certs/ca.crt",
+    "server_cert": "./mosquitto/config/certs/server.crt",
+    "server_key": "./mosquitto/config/certs/server.key",
+    "api_url": "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=temperature_2m,relative_humidity_2m"
+  }
+}
