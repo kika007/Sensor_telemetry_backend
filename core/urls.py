@@ -17,16 +17,19 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from django.views.generic import RedirectView
-from api.views import CombinedTelemetryView
+from api.views import CombinedTelemetryView, MQTTControlView
 
 urlpatterns = [
     # Django administration panel
     path('admin/', admin.site.urls),
     
     # Redirect the root URL ('/') directly to our telemetry API
-    path('', RedirectView.as_view(url='/api/telemetry/', permanent=False)),
+    path('', RedirectView.as_view(url='/api/control/mqtt/', permanent=False)),
     
     # Single endpoint for all IoT telemetry data
     path('api/telemetry/', CombinedTelemetryView.as_view(), name='all_telemetry'),
+    
+    # New endpoint for sending control commands
+    path('api/control/mqtt/', MQTTControlView.as_view(), name='control_mqtt'),
 ]
 
