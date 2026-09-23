@@ -1,7 +1,10 @@
+"""
+Universal MQTT Sensor Client Class
+Fetches environmental data from an API and publishes it via MQTT.
+"""
 import json
 import ssl
 import threading
-import time
 
 import paho.mqtt.client as mqtt
 import requests
@@ -24,7 +27,9 @@ class MQTTSensorClient:
         self.ca_cert = ca_cert
 
         # Control flag to pause/resume data fetching via API commands
-        self.is_running = True
+        self._is_paused = False  
+        # Event to safely stop the background publishing thread
+        self._stop_event = threading.Event()
 
         # Initialize the Paho MQTT client securely
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -49,10 +54,10 @@ class MQTTSensorClient:
             command = payload.get("command")
             
             if command == "stop":
-                self.is_running = False
+                self._is_paused = True
                 print(f"[{self.name}] CMD: Stopping data transmission...")
             elif command == "start":
-                self.is_running = True
+                self._is_paused = False
                 print(f"[{self.name}] CMD: Resuming data transmission...")
                 
         except json.JSONDecodeError:
@@ -78,15 +83,19 @@ class MQTTSensorClient:
 
     def _publishing_loop(self) -> None:
         """Internal loop running in a background thread."""
-        while True:
-            if self.is_running:
+        # Loop continues until the stop_event is set
+        while not self._stop_event.is_set():
+            
+            # Fetch and publish data only if the client is not paused
+            if not self._is_paused:
                 payload = self.fetch_energy_data()
                 if payload:
                     json_payload = json.dumps(payload)
                     self.client.publish(self.data_topic, json_payload)
                     print(f"[{self.name}] Published: {json_payload}")
             
-            time.sleep(self.wait_time)
+            # Wait for the specified time, but wake up immediately if stop_event is set
+            self._stop_event.wait(self.wait_time)
 
     def start(self) -> None:
         """Connect to broker and start the publishing background thread."""
@@ -101,7 +110,17 @@ class MQTTSensorClient:
             print(f"[{self.name}] Failed to start: {e}")
 
     def stop(self) -> None:
-        """Gracefully disconnect the client."""
+        """Gracefully disconnect the client and stop the background thread."""
+        print(f"[{self.name}] Stopping worker thread...")
+        
+        # Signal the background thread to terminate immediately
+        self._stop_event.set()
+        
+        # Wait up to 2 seconds for the thread to safely finish
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            self.worker_thread.join(timeout=2.0)
+            
+        # Disconnect the MQTT client
         self.client.loop_stop()
         self.client.disconnect()
-        print(f"[{self.name}] Disconnected.")
+        print(f"[{self.name}] Successfully disconnected and stopped.")
