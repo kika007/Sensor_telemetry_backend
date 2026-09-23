@@ -1,7 +1,3 @@
-"""
-Universal MQTT Sensor Client Class
-Fetches environmental data from an API and publishes it via MQTT.
-"""
 import json
 import ssl
 import threading
@@ -88,11 +84,14 @@ class MQTTSensorClient:
             
             # Fetch and publish data only if the client is not paused
             if not self._is_paused:
-                payload = self.fetch_energy_data()
-                if payload:
-                    json_payload = json.dumps(payload)
-                    self.client.publish(self.data_topic, json_payload)
-                    print(f"[{self.name}] Published: {json_payload}")
+                try:
+                    payload = self.fetch_energy_data()
+                    if payload:
+                        json_payload = json.dumps(payload)
+                        self.client.publish(self.data_topic, json_payload)
+                        print(f"[{self.name}] Published: {json_payload}")
+                except Exception as e:
+                    print(f"[{self.name}] Warning: there was an error publishing or fetching data: {e}")
             
             # Wait for the specified time, but wake up immediately if stop_event is set
             self._stop_event.wait(self.wait_time)
