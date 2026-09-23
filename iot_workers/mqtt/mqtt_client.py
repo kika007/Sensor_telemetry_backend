@@ -23,8 +23,7 @@ class MQTTSensorClient:
         self.ca_cert = ca_cert
 
         # Control flag to pause/resume data fetching via API commands
-        self._is_paused = False  
-        # Event to safely stop the background publishing thread
+        self._pause_event = threading.Event()
         self._stop_event = threading.Event()
 
         # Initialize the Paho MQTT client securely
@@ -47,17 +46,19 @@ class MQTTSensorClient:
         """Handle incoming control commands (e.g., from Django REST API)."""
         try:
             payload = json.loads(msg.payload.decode())
+            if not isinstance(payload, dict):
+                raise ValueError("Control payload must be a JSON object")
             command = payload.get("command")
             
             if command == "stop":
-                self._is_paused = True
+                self._pause_event.set()
                 print(f"[{self.name}] CMD: Stopping data transmission...")
             elif command == "start":
-                self._is_paused = False
+                self._pause_event.clear()
                 print(f"[{self.name}] CMD: Resuming data transmission...")
                 
-        except json.JSONDecodeError:
-            print(f"[{self.name}] Error: Invalid JSON on control topic.")
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+            print(f"[{self.name}] Error: Invalid control payload: {e}")
 
     def fetch_energy_data(self) -> dict:
         """Fetch current weather data synchronously from the API."""
@@ -83,13 +84,16 @@ class MQTTSensorClient:
         while not self._stop_event.is_set():
             
             # Fetch and publish data only if the client is not paused
-            if not self._is_paused:
+            if not self._pause_event.is_set():
                 try:
                     payload = self.fetch_energy_data()
                     if payload:
                         json_payload = json.dumps(payload)
-                        self.client.publish(self.data_topic, json_payload)
-                        print(f"[{self.name}] Published: {json_payload}")
+                        result = self.client.publish(self.data_topic, json_payload)
+                        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                            print(f"[{self.name}] Publish failed, code: {result.rc}")
+                        else:
+                            print(f"[{self.name}] Published: {json_payload}")
                 except Exception as e:
                     print(f"[{self.name}] Warning: there was an error publishing or fetching data: {e}")
             
@@ -98,15 +102,22 @@ class MQTTSensorClient:
 
     def start(self) -> None:
         """Connect to broker and start the publishing background thread."""
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            raise RuntimeError(f"[{self.name}] Sensor client is already running")
+
+        self._stop_event.clear()
         try:
             self.client.connect(self.broker_host, self.broker_port, 60)
             self.client.loop_start()
             
-            self.worker_thread = threading.Thread(target=self._publishing_loop)
-            self.worker_thread.daemon = True
+            self.worker_thread = threading.Thread(
+                target=self._publishing_loop,
+                name=f"mqtt-publisher-{self.name}",
+            )
             self.worker_thread.start()
         except Exception as e:
-            print(f"[{self.name}] Failed to start: {e}")
+            self.client.loop_stop()
+            raise RuntimeError(f"[{self.name}] Failed to start: {e}") from e
 
     def stop(self) -> None:
         """Gracefully disconnect the client and stop the background thread."""
@@ -115,9 +126,9 @@ class MQTTSensorClient:
         # Signal the background thread to terminate immediately
         self._stop_event.set()
         
-        # Wait up to 2 seconds for the thread to safely finish
+        # Wait for the current API request to finish before disconnecting MQTT.
         if self.worker_thread is not None and self.worker_thread.is_alive():
-            self.worker_thread.join(timeout=2.0)
+            self.worker_thread.join()
             
         # Disconnect the MQTT client
         self.client.loop_stop()

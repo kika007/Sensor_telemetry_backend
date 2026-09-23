@@ -36,7 +36,11 @@ def main() -> None:
             broker_port=broker_settings.get("port", 8883),
             ca_cert=broker_settings.get("ca_cert", "")
         )
-        client_instance.start()
+        try:
+            client_instance.start()
+        except RuntimeError as e:
+            print(e)
+            continue
         active_clients.append(client_instance)
 
     # Keep the application running
@@ -47,6 +51,7 @@ def main() -> None:
             
     except KeyboardInterrupt:
         print("\nShutting down all sensors...")
+    finally:
         for client in active_clients:
             client.stop()
 

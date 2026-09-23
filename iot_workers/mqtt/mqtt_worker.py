@@ -1,7 +1,7 @@
 import json
+import queue
 import ssl
 import threading
-import queue
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
@@ -16,7 +16,8 @@ def db_worker_loop(data_queue: queue.Queue, collection, stop_event: threading.Ev
     print("Database worker thread started.")
     
     # Loop continues until the program is shut down
-    while not stop_event.is_set():
+    while not stop_event.is_set() or not data_queue.empty():
+        payload = None
         try:
             # Wait for an item in the queue for up to 1 second
             # If nothing comes in 1 second, it throws queue.Empty, and checks stop_event again
@@ -26,14 +27,14 @@ def db_worker_loop(data_queue: queue.Queue, collection, stop_event: threading.Ev
             result = collection.insert_one(payload)
             print(f"Successfully saved to MongoDB with ID: {result.inserted_id}")
             
-            # Mark the queue task as completed
-            data_queue.task_done()
-            
         except queue.Empty:
             # Normal behavior when no new messages are arriving
             continue
         except Exception as e:
             print(f"Error saving to MongoDB: {e}")
+        finally:
+            if payload is not None:
+                data_queue.task_done()
             
     print("Database worker thread safely stopped.")
 
@@ -55,15 +56,17 @@ def on_message(client, userdata, msg) -> None:
     
     try:
         payload = json.loads(msg.payload.decode())
+        if not isinstance(payload, dict):
+            raise ValueError("MQTT payload must be a JSON object")
         payload["source_topic"] = msg.topic
         
         # Put the message in the queue for the background thread to process.
         # This is extremely fast and doesn't block the MQTT network loop.
-        data_queue.put(payload)
+        data_queue.put_nowait(payload)
         print(f"Added message from '{msg.topic}' to the database queue.")
 
-    except json.JSONDecodeError:
-        print(f"Error: Received invalid JSON format on topic {msg.topic}")
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+        print(f"Error: Invalid payload on topic {msg.topic}: {e}")
     except queue.Full:
         print("Warning: The internal data queue is full. Message dropped!")
     except Exception as e:
@@ -118,11 +121,11 @@ def main() -> None:
         client.loop_forever()  
     except KeyboardInterrupt:
         print("\nEnding MQTT worker...")
-        
+    finally:
         # Shut down the background database thread safely
         stop_event.set()
         if db_thread.is_alive():
-            db_thread.join(timeout=3.0)
+            db_thread.join()
             
         client.disconnect()
         mongo_client.close()
