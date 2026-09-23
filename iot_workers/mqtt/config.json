@@ -1,0 +1,25 @@
+{
+  "broker_settings": {
+    "host": "localhost",
+    "port": 8883,
+    "ca_cert": "./mosquitto/config/certs/ca.crt"
+  },
+  "sensors": [
+    {
+      "name": "Brno-Sensor",
+      "location": "Brno",
+      "api_url": "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=wind_speed_10m,direct_radiation",
+      "data_topic": "sensors/brno/data",
+      "control_topic": "sensors/brno/control",
+      "wait_time": 10
+    },
+    {
+      "name": "Prague-Sensor",
+      "location": "Prague",
+      "api_url": "https://api.open-meteo.com/v1/forecast?latitude=50.0880&longitude=14.4208&current=wind_speed_10m,direct_radiation",
+      "data_topic": "sensors/prague/data",
+      "control_topic": "sensors/prague/control",
+      "wait_time": 12
+    }
+  ]
+}
