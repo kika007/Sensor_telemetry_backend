@@ -1,12 +1,41 @@
 import json
 import ssl
+import threading
+import queue
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
 
-# Using wildcard '+' to subscribe to all sensors (e.g., sensors/brno/data, sensors/prague/data)
-TOPIC = "sensors/+/data" 
+# Wildcard topic for all sensors
+TOPIC = "sensors/+/data"
+
+
+def db_worker_loop(data_queue: queue.Queue, collection, stop_event: threading.Event) -> None:
+    """Background thread that reads from the queue and writes to MongoDB."""
+    print("Database worker thread started.")
+    
+    # Loop continues until the program is shut down
+    while not stop_event.is_set():
+        try:
+            # Wait for an item in the queue for up to 1 second
+            # If nothing comes in 1 second, it throws queue.Empty, and checks stop_event again
+            payload = data_queue.get(timeout=1.0)
+            
+            # Insert the payload into MongoDB safely in the background
+            result = collection.insert_one(payload)
+            print(f"Successfully saved to MongoDB with ID: {result.inserted_id}")
+            
+            # Mark the queue task as completed
+            data_queue.task_done()
+            
+        except queue.Empty:
+            # Normal behavior when no new messages are arriving
+            continue
+        except Exception as e:
+            print(f"Error saving to MongoDB: {e}")
+            
+    print("Database worker thread safely stopped.")
 
 
 def on_connect(client, userdata, flags, rc, properties=None) -> None:
@@ -16,83 +45,88 @@ def on_connect(client, userdata, flags, rc, properties=None) -> None:
         client.subscribe(TOPIC)
         print(f"Listening for messages on wildcard topic: {TOPIC}")
     else:
-        print(f"Error connecting to MQTT broker, error code: {rc}")
+        print(f"Error connecting to MQTT broker, code: {rc}")
 
 
 def on_message(client, userdata, msg) -> None:
-    """Callback executed when a message is received."""
-    # Retrieve the database collection safely from userdata
-    collection = userdata.get("db_collection")
+    """Fast callback that just puts the message into the memory queue."""
+    # Retrieve the thread-safe queue from userdata
+    data_queue = userdata.get("data_queue")
     
     try:
         payload = json.loads(msg.payload.decode())
-        print(f"Received data from '{msg.topic}'")
-
-        # Inject the topic name into the payload
         payload["source_topic"] = msg.topic
-
-        # Insert into MongoDB
-        result = collection.insert_one(payload)
-        print(f"Successfully saved to MongoDB with ID: {result.inserted_id}\n")
+        
+        # Put the message in the queue for the background thread to process.
+        # This is extremely fast and doesn't block the MQTT network loop.
+        data_queue.put(payload)
+        print(f"Added message from '{msg.topic}' to the database queue.")
 
     except json.JSONDecodeError:
         print(f"Error: Received invalid JSON format on topic {msg.topic}")
+    except queue.Full:
+        print("Warning: The internal data queue is full. Message dropped!")
     except Exception as e:
-        print(f"Error processing and saving message: {e}")
+        print(f"Error processing message: {e}")
 
 
 def main() -> None:
-    """Load configuration, initialize DB, configure TLS, and start blocking loop."""
-    
-    # Load configuration from config.json
+    """Load configuration, initialize DB thread, and start MQTT network loop."""
     current_dir = Path(__file__).parent
     config_path = current_dir / "config.json"
     
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
-    except FileNotFoundError:
-        print(f"Error: 'config.json' not found at {config_path}")
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
         return
         
     broker_config = config.get("broker_settings", {})
     db_config = config.get("database_settings", {})
 
-    # Initialize MongoDB connection
     print("Connecting to MongoDB...")
     mongo_client = MongoClient(db_config.get("mongo_uri"))
     db = mongo_client[db_config.get("db_name")]
     collection = db[db_config.get("collection_name")]
 
-    # Initialize MQTT Client
-    # We pass the collection in a dictionary as userdata
+    # Initialize the thread-safe Queue (max 1000 items) and Stop Event
+    data_queue = queue.Queue(maxsize=1000)
+    stop_event = threading.Event()
+
+    # Start the background database worker thread
+    db_thread = threading.Thread(
+        target=db_worker_loop, 
+        args=(data_queue, collection, stop_event),
+        daemon=True
+    )
+    db_thread.start()
+
+    # Initialize MQTT Client (pass the queue via userdata instead of collection)
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2, 
-        userdata={"db_collection": collection}
+        userdata={"data_queue": data_queue}
     )
     
     client.on_connect = on_connect
     client.on_message = on_message
-    
-    # Apply secure TLS configuration dynamically
-    client.tls_set(
-        ca_certs=broker_config.get("ca_cert"), 
-        tls_version=ssl.PROTOCOL_TLSv1_2
-    )
+    client.tls_set(ca_certs=broker_config.get("ca_cert"), tls_version=ssl.PROTOCOL_TLSv1_2)
 
-    print("Starting MQTT Worker...")
+    print("Starting MQTT Network Loop...")
     try:
-        client.connect(
-            broker_config.get("host"), 
-            broker_config.get("port"), 
-            60
-        )
+        client.connect(broker_config.get("host"), broker_config.get("port"), 60)
         client.loop_forever()  
     except KeyboardInterrupt:
         print("\nEnding MQTT worker...")
+        
+        # Shut down the background database thread safely
+        stop_event.set()
+        if db_thread.is_alive():
+            db_thread.join(timeout=3.0)
+            
         client.disconnect()
         mongo_client.close()
-        print("Disconnected from MQTT broker and MongoDB.")
+        print("Disconnected from MQTT and MongoDB.")
 
 
 if __name__ == "__main__":
