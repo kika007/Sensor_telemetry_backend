@@ -1,6 +1,4 @@
-# [PROJECT NAME]
-
-> [TO BE COMPLETED: Add a one-sentence description of the project and its primary purpose.]
+# [Sensory telemetry backend]
 
 A Django REST API and IoT worker system for collecting, storing, and controlling sensor telemetry through Modbus and MQTT.
 
@@ -47,7 +45,7 @@ A Django REST API and IoT worker system for collecting, storing, and controlling
 ### 1. Clone the repository
 
 ```bash
-git clone [TO BE COMPLETED: repository URL]
+git clone https://github.com/kika007/Sensor_telemetry_backend
 cd Sensor_telemetry_backend
 ```
 
@@ -143,13 +141,9 @@ curl -X POST http://127.0.0.1:8000/api/control/mqtt/ \
 
 Use `"targets":["all"]` to target all active sensors registered in PostgreSQL.
 
-## Screenshot / Demo
-
-[TO BE COMPLETED: Add a screenshot, hosted demo, or API response example.]
+## Project architecture
 
 ![Project Screenshot](docs/architecture_en.png.png)
-
-[TO BE COMPLETED: Replace `docs/screenshot.png` with the actual image path or demo URL.]
 
 ## Limitations, Known Issues, and Technical Debt
 
@@ -164,10 +158,4 @@ Use `"targets":["all"]` to target all active sensors registered in PostgreSQL.
 - Certificate provisioning and rotation are manual. Production deployments should use a documented and automated certificate-management process.
 - API schemas, response contracts, and operational runbooks are not yet documented.
 
-## Development Status
 
-[TO BE COMPLETED: Add the current project status, supported environments, release version, and roadmap.]
-
-## License
-
-[TO BE COMPLETED: Add the project license and any third-party attribution requirements.]
