@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from pymongo import MongoClient
+from .models import SensorDevice  
 
 # Database configuration constants
 MONGO_URI = "mongodb://root:rootpassword@localhost:27017/"
@@ -51,27 +52,56 @@ class CombinedTelemetryView(APIView):
         return Response(combined_data)
     
 
-import json
-import ssl
-import paho.mqtt.client as mqtt
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SensorDevice  # Nezabudni importovať tvoj nový model
+# Fallback configuration (can also be moved to settings.py as MQTT_FALLBACK_SENSORS)
+FALLBACK_SENSORS = [
+    {
+        "name": "Brno-Sensor",
+        "location": "brno",
+        "api_url": "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=wind_speed_10m,direct_radiation",
+        "data_topic": "sensors/brno/data",
+        "control_topic": "sensors/brno/control",
+        "wait_time": 10,
+        "is_active": True,
+    },
+    {
+        "name": "Prague-Sensor",
+        "location": "prague",
+        "api_url": "https://api.open-meteo.com/v1/forecast?latitude=50.0880&longitude=14.4208&current=wind_speed_10m,direct_radiation",
+        "data_topic": "sensors/prague/data",
+        "control_topic": "sensors/prague/control",
+        "wait_time": 12,
+        "is_active": True,
+    }
+]
 
 class MQTTControlView(APIView):
     """
-    API View to remotely control the MQTT workers using PostgreSQL metadata.
-    Accepts POST requests with:
-    {
-        "command": "start", 
-        "targets": ["brno", "prague"]  # or ["all"]
-    }
+    API View to remotely control the MQTT workers using PostgreSQL metadata,
+    with a robust fallback to config-defined sensors if the database is empty.
     """
+
+    def _get_active_sensor_map(self):
+        """
+        Helper method to retrieve a dictionary of active sensors: {location_lower: control_topic}.
+        Prioritizes database records; falls back to config defaults if the database is empty.
+        """
+        # 1. Fetch active sensors from PostgreSQL
+        db_sensors = SensorDevice.objects.filter(is_active=True)
+        sensor_map = {sensor.location.lower(): sensor.control_topic for sensor in db_sensors}
+
+        # 2. Fall back to config if no records are found in the database
+        if not sensor_map:
+            for fallback in FALLBACK_SENSORS:
+                if fallback.get("is_active", True):
+                    loc = fallback["location"].lower()
+                    if loc not in sensor_map:
+                        sensor_map[loc] = fallback["control_topic"]
+        
+        return sensor_map
+
     def get(self, request):
-        # Načítanie iba tých senzorov, ktoré majú is_active=True
-        active_sensors = SensorDevice.objects.filter(is_active=True)
-        available_locations = [sensor.location for sensor in active_sensors]
+        sensor_map = self._get_active_sensor_map()
+        available_locations = list(sensor_map.keys())
         
         return Response(
             {
@@ -99,16 +129,13 @@ class MQTTControlView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Fetch active sensors from PostgreSQL
-        active_sensors = SensorDevice.objects.filter(is_active=True)
+        # 3. Fetch active sensors (DB records with config fallback)
+        sensor_map = self._get_active_sensor_map()
         
-        # Vytvoríme si slovník pre rýchle vyhľadávanie: {"brno": "sensors/brno/control", ...}
-        sensor_map = {sensor.location.lower(): sensor.control_topic for sensor in active_sensors}
-        
-        # Normalize targets (lowercase)
+        # Normalize targets to lowercase
         normalized_targets = [str(t).lower() for t in targets]
         
-        # 4. Filter against our database records
+        # 4. Filter targets against our available sensor records
         if "all" in normalized_targets:
             valid_targets = list(sensor_map.keys())
         else:
@@ -131,7 +158,7 @@ class MQTTControlView(APIView):
             payload = json.dumps({"command": command})
             published_details = []
 
-            # 6. Iterate and publish using the topic from PostgreSQL
+            # 6. Iterate and publish commands using topics from the map
             for target in valid_targets:
                 topic = sensor_map[target]
                 client.publish(topic, payload)
