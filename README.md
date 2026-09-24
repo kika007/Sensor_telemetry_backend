@@ -52,8 +52,8 @@ cd Sensor_telemetry_backend
 ### 2. Create and activate a virtual environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+conda create -n [NAME] python=3.10 -y
+conda activate [NAME]
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
