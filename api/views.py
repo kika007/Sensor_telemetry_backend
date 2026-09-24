@@ -50,41 +50,18 @@ class CombinedTelemetryView(APIView):
         # Return the combined data as a JSON response
         return Response(combined_data)
     
+
 import json
 import ssl
 import paho.mqtt.client as mqtt
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-
-# In a real Django project, you might load this from a config file, 
-# a database, or define it in settings.py. For this example, we define it here.
-SENSOR_CONFIG = [
-    {
-      "name": "Brno-Sensor",
-      "location": "Brno",
-      "api_url": "https://api.open-meteo.com/v1/forecast?latitude=49.1951&longitude=16.6068&current=wind_speed_10m,direct_radiation",
-      "data_topic": "sensors/brno/data",
-      "control_topic": "sensors/brno/control",
-      "wait_time": 10
-    },
-    {
-      "name": "Prague-Sensor",
-      "location": "Prague",
-      "api_url": "https://api.open-meteo.com/v1/forecast?latitude=50.0880&longitude=14.4208&current=wind_speed_10m,direct_radiation",
-      "data_topic": "sensors/prague/data",
-      "control_topic": "sensors/prague/control",
-      "wait_time": 12
-    }
-]
-
-# Create a fast lookup dictionary using the lowercase location as the key 
-# e.g., {"brno": { ...sensor dict... }, "prague": { ...sensor dict... }}
-AVAILABLE_SENSORS = { sensor["location"].lower(): sensor for sensor in SENSOR_CONFIG }
+from .models import SensorDevice  # Nezabudni importovať tvoj nový model
 
 class MQTTControlView(APIView):
     """
-    API View to remotely control the MQTT workers using structured JSON config.
+    API View to remotely control the MQTT workers using PostgreSQL metadata.
     Accepts POST requests with:
     {
         "command": "start", 
@@ -92,8 +69,10 @@ class MQTTControlView(APIView):
     }
     """
     def get(self, request):
-        # We can now dynamically show the available locations based on our config
-        available_locations = list(AVAILABLE_SENSORS.keys())
+        # Načítanie iba tých senzorov, ktoré majú is_active=True
+        active_sensors = SensorDevice.objects.filter(is_active=True)
+        available_locations = [sensor.location for sensor in active_sensors]
+        
         return Response(
             {
                 "info": "Send a POST request with {'command': 'start'/'stop', 'targets': ['target1', 'target2']} to control the MQTT workers.",
@@ -120,22 +99,28 @@ class MQTTControlView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Normalize targets (lowercase) and filter against our config
+        # 3. Fetch active sensors from PostgreSQL
+        active_sensors = SensorDevice.objects.filter(is_active=True)
+        
+        # Vytvoríme si slovník pre rýchle vyhľadávanie: {"brno": "sensors/brno/control", ...}
+        sensor_map = {sensor.location.lower(): sensor.control_topic for sensor in active_sensors}
+        
+        # Normalize targets (lowercase)
         normalized_targets = [str(t).lower() for t in targets]
         
+        # 4. Filter against our database records
         if "all" in normalized_targets:
-            valid_targets = list(AVAILABLE_SENSORS.keys())
+            valid_targets = list(sensor_map.keys())
         else:
-            # Filter to include only locations that exist in our lookup dictionary
-            valid_targets = [t for t in normalized_targets if t in AVAILABLE_SENSORS]
+            valid_targets = [t for t in normalized_targets if t in sensor_map]
             
         if not valid_targets:
             return Response(
-                {"error": f"No valid targets found. Available sensors are: {list(AVAILABLE_SENSORS.keys())}"}, 
+                {"error": f"No valid targets found. Available active sensors are: {list(sensor_map.keys())}"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 4. Initialize the MQTT client
+        # 5. Initialize the MQTT client
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         
         try:
@@ -146,16 +131,13 @@ class MQTTControlView(APIView):
             payload = json.dumps({"command": command})
             published_details = []
 
-            # 5. Iterate and publish using the exact topic from the JSON config
+            # 6. Iterate and publish using the topic from PostgreSQL
             for target in valid_targets:
-                sensor_data = AVAILABLE_SENSORS[target]
-                # Extract the control topic directly from the sensor configuration
-                topic = sensor_data["control_topic"]
-                
+                topic = sensor_map[target]
                 client.publish(topic, payload)
                 
                 published_details.append({
-                    "location": sensor_data["location"],
+                    "location": target,
                     "topic": topic
                 })
             
