@@ -1,4 +1,4 @@
-# [Sensory telemetry backend]
+# Sensory telemetry backend
 
 A Django REST API and IoT worker system for collecting, storing, and controlling sensor telemetry through Modbus and MQTT.
 
@@ -107,8 +107,6 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-The API is then available at `http://127.0.0.1:8000/`.
-
 ### 7. Start the workers
 
 Run each worker from its own directory so its local imports and configuration paths resolve correctly.
@@ -118,9 +116,15 @@ MQTT workers:
 ```bash
 cd iot_workers/mqtt
 python run_sensors.py
+python mqtt_workers.py
 ```
+Modbus workers
 
-Modbus worker commands depend on the desired role. [TO BE COMPLETED: Confirm the supported Modbus startup command and document the expected process lifecycle.]
+```bash
+cd iot_workers/modbus
+python modbus_server.py
+python modbus_client.py
+```
 
 ### API Endpoints
 
