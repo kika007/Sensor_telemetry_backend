@@ -92,9 +92,11 @@ class ModbusWeatherClient:
                         "timestamp": datetime.now().isoformat(),
                     }
                     
-                    # FAST SOLUTION: Just put the data into the queue and move on
-                    self.data_queue.put(data)
-                    print(f"[Modbus Client] Read from server -> Temp: {temp}°C, Humidity: {humidity}% (Sent to queue)")
+                    try:
+                        self.data_queue.put(data, timeout=1.0)
+                        print(f"[Modbus Client] Read from server -> Temp: {temp}°C, Humidity: {humidity}% (Sent to queue)")
+                    except queue.Full:
+                        print("[Modbus Client] Warning: Queue is full! Dropping data to prevent network blocking.")
                 else:
                     print(f"[Modbus Client] Error reading registers: {result}")
                     
