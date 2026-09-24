@@ -16,18 +16,19 @@ def db_worker_loop(data_queue: queue.Queue, collection, stop_event: threading.Ev
         try:
             # Wait for data in the queue for up to 1 second
             payload = data_queue.get(timeout=1.0)
+        except queue.Empty:
+            continue  # No data to process, check stop_event again    
             
+        try:
             # Safe background insert
             result = collection.insert_one(payload)
             print(f"[DB Worker] Successfully saved to DB, ID: {result.inserted_id}")
             
-            # Mark the task as completed
-            data_queue.task_done()
-            
-        except queue.Empty:
-            continue
         except Exception as e:
             print(f"[DB Worker] Database insert error: {e}")
+        
+        finally:
+            data_queue.task_done()
             
     print("[DB Worker] Database thread safely terminated.")
 
