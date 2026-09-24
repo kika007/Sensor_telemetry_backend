@@ -151,15 +151,13 @@ Use `"targets":["all"]` to target all active sensors registered in PostgreSQL.
 
 ## Limitations, Known Issues, and Technical Debt
 
-- Credentials and connection details are hardcoded in source files and Compose configuration. Move secrets, database URLs, broker settings, and Django settings to environment variables loaded from a `.env` file or a secrets manager.
-- `DEBUG` is enabled and the Django secret key is committed to the repository. Production deployments need secure settings, restricted `ALLOWED_HOSTS`, and rotated secrets.
-- The MongoDB database name and some worker/API configuration values are duplicated across files and are not centrally managed.
-- The current setup is development-oriented and does not provide a production deployment configuration, process supervisor, health checks, or worker observability.
-- MQTT and MongoDB connections are created directly inside request or worker code without an explicit connection lifecycle, pooling strategy, retry policy, or timeout policy.
-- API authentication, authorization, throttling, and input validation need to be strengthened before exposing the control endpoint beyond a trusted network.
-- Test coverage is limited. More unit, integration, end-to-end, and failure-path tests are needed, especially for MQTT connectivity, MongoDB access, TLS failures, worker startup, and persistence behavior.
-- The current tests rely on external service behavior for some successful paths and may require running PostgreSQL, MongoDB, and MQTT infrastructure to provide meaningful coverage.
-- Certificate provisioning and rotation are manual. Production deployments should use a documented and automated certificate-management process.
-- API schemas, response contracts, and operational runbooks are not yet documented.
+- **Localhost and Containerization Constraints:** The current setup is heavily oriented toward a local `localhost` development environment. While Docker Compose is used for infrastructure services, transitioning the application workers and API fully into orchestrated containers would significantly improve environment isolation, service portability, and scalability.
+- **Hardcoded Credentials and Configuration:** Credentials and connection details are hardcoded in source files and Compose configuration. Secrets, database URLs, broker settings, and Django settings should be moved to environment variables loaded from a `.env` file or a secure secrets manager.
+- **Security and Debug Settings:** `DEBUG` mode is enabled and the Django secret key is committed directly to the repository. Production deployments require secure settings, restricted `ALLOWED_HOSTS`, and properly rotated secrets.
+- **Lack of Production Readiness:** The current architecture does not provide a production deployment configuration, process supervisor, health checks, or robust worker observability.
+- **Connection Management:** MQTT and MongoDB connections are created directly inside request or worker code without an explicit connection lifecycle, pooling strategy, retry policy, or timeout policy.
+- **API Security and Validation:** API authentication, authorization, throttling, and input validation need to be strengthened before exposing the control endpoint beyond a trusted network.
+- **Test Coverage:** Test coverage is limited. More unit, integration, end-to-end, and failure-path tests are needed, especially for MQTT connectivity, MongoDB access, TLS failures, worker startup, and persistence behavior. The current tests rely on external service behavior for some successful paths and may require running infrastructure services to provide meaningful coverage.
+- **Certificate Management:** Certificate provisioning and rotation are manual. Production deployments should use a documented and automated certificate-management process.
 
 
